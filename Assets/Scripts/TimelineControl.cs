@@ -22,16 +22,24 @@ public class TimelineControl : MonoBehaviour
 
     MediaPlayer PlayingPlayer;
 
+    bool isGazeComplete = false;
+
+    public float scrubTime = 2f;
+
+    float targetTime = 0;
+
     //key things
     public float minAngle = -127.5f, maxAngle = 126f;
     public int startHour = 5, endHour = 21;
 
     //Control for the return pad anims
     public float returnPadMinAlpha =0.5f, returnPadMaxAlpha=1f, returnPadTransitionTime = 1f;
-    IEnumerator returnPadAnim;
+    IEnumerator returnPadAnim,scrubber;
 
     Camera cam;
     float headY = 0;
+
+    public float targ;
 
     float totalAngle;
 
@@ -75,7 +83,11 @@ public class TimelineControl : MonoBehaviour
                     break;
                 case TimeType.HHMM:
                     string[] mapped = (MapRange(d, 0, 1, startHour, endHour)).ToString("00.##").Split('.');
-                    string min = MapRange(float.Parse(mapped[1]),0,99,0,59).ToString("00");
+                    string min = "00";
+                    if(mapped.Length>1){
+                        min = MapRange(float.Parse(mapped[1]), 0, 99, 0, 59).ToString("00");
+                    }
+
                     timeString = mapped[0] + ":" + min;
                     break;
                 case TimeType.Percent:
@@ -99,9 +111,45 @@ public class TimelineControl : MonoBehaviour
             
     }
 
+    public void GazeLeave()
+    {
+        if(isGazeComplete){
+            if (scrubber != null) StopCoroutine(scrubber);
+            scrubber = Scrub();
+            StartCoroutine(scrubber);
+            isGazeComplete = false;
+        }
+    }
+
+    IEnumerator Scrub(){
+        float time = PlayingPlayer.Control.GetCurrentTimeMs();
+        float duration = PlayingPlayer.Info.GetDurationMs();
+        float d = Mathf.Clamp(time / duration, 0.0f, 1.0f);
+        Debug.Log("Scrubbing to " + targetTime);
+        float t = scrubTime;
+        while (t > 0)
+        {
+            float percent = Mathf.Lerp(d, targetTime, 1 - (t / scrubTime));
+            PlayingPlayer.Control.Seek(percent * PlayingPlayer.Info.GetDurationMs());
+
+            t -= Time.deltaTime;
+            yield return null;
+        }
+    }
+
+
+    public void GazeComplete(){
+        isGazeComplete = true;
+    }
+
+
+    public void GazeEnter(){
+        isGazeComplete = true;
+    }
+
     public void GazeStay()
     {
-        float targ = headY;
+        targ = headY;
 
 
         if (targ < 180 + minAngle)
@@ -117,6 +165,18 @@ public class TimelineControl : MonoBehaviour
         scrubMarker.transform.localRotation = Quaternion.Slerp(scrubMarker.transform.localRotation, Quaternion.Euler(new Vector3(0, 0, 180 - targ)), Time.deltaTime * scrubSeekMultiplier);
 
 
+        targetTime = MapRange(targ, 180+minAngle, 180+maxAngle, 0f, 1f);
+
+        float time = PlayingPlayer.Control.GetCurrentTimeMs();
+        float duration = PlayingPlayer.Info.GetDurationMs();
+        float d = Mathf.Clamp(time / duration, 0.0f, 1.0f);
+
+        if (targetTime < d)
+        {
+            scrubMarker.color = Color.black;
+        } else {
+            scrubMarker.color = Color.white;
+        }
     }
 
     public void ShowReturn(){
